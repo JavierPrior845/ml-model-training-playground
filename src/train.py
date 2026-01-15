@@ -1,6 +1,8 @@
+import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import OneHotEncoder, TargetEncoder
+from sklearn.preprocessing import OneHotEncoder, TargetEncoder, StandardScaler
+from sklearn.decomposition import PCA
 
 def load_and_preprocess(path):
     # 1. Data loading
@@ -47,32 +49,54 @@ def split_data(data):
     x_val, x_test, y_val, y_test = train_test_split(x_rest, y_rest, test_size=0.5, random_state=324) # 20x100 validation | 20x100 test
     return x_train, x_val, x_test, y_train, y_val, y_test
 
-def encding_data():
+
+def encode_features(x_train, x_val, x_test, y_train):
+    # Categorical split
     ohe_cols = ['gender', 'Partner', 'Dependents', 'PhoneService', 'MultipleLines',
                 'InternetService', 'OnlineSecurity', 'OnlineBackup', 'DeviceProtection',
                 'TechSupport', 'StreamingTV', 'StreamingMovies', 'PaperlessBilling']
-
-    # Using TargetEncoder for columns where it might be more efficient (e.g., PaymentMethod or Contract)
-    # TargetEncoder is great for high-cardinality or highly predictive categories
     te_cols = ['Contract', 'PaymentMethod']
 
-    # A) Apply OneHotEncoder
+    # 1. OneHotEncoder
     ohe = OneHotEncoder(sparse_output=False, handle_unknown='ignore', drop='first')
-    # We fit only on train to avoid leakage
     x_train_ohe = ohe.fit_transform(x_train[ohe_cols])
     x_val_ohe = ohe.transform(x_val[ohe_cols])
     x_test_ohe = ohe.transform(x_test[ohe_cols])
 
-    # B) Apply TargetEncoder (Requires y_train!)
+    # 2. TargetEncoder (Fit only with Train y!)
     te = TargetEncoder(smooth="auto")
-    # It learns the relation between categories and the Churn probability
     x_train_te = te.fit_transform(x_train[te_cols], y_train)
     x_val_te = te.transform(x_val[te_cols])
     x_test_te = te.transform(x_test[te_cols])
 
-    print("\nEncoding finalized using Sklearn Encoders.")
-    print(f"Training set shapes: OHE: {x_train_ohe.shape}, TE: {x_train_te.shape}")
-    print("Data preparation finalized.")
+    # Combine with numerical columns
+    num_cols = ['tenure', 'MonthlyCharges', 'TotalCharges']
+
+    # Helper to concatenate everything back
+    def combine(orig_df, ohe_arr, te_arr):
+        return np.hstack([orig_df[num_cols].values, ohe_arr, te_arr])
+
+    return (combine(x_train, x_train_ohe, x_train_te),
+            combine(x_val, x_val_ohe, x_val_te),
+            combine(x_test, x_test_ohe, x_test_te))
+
+
+def scale_features(x_train, x_val, x_test):
+    scaler = StandardScaler()
+    # Fit only on training data to prevent leakage
+    x_train_scaled = scaler.fit_transform(x_train)
+    x_val_scaled = scaler.transform(x_val)
+    x_test_scaled = scaler.transform(x_test)
+    return x_train_scaled, x_val_scaled, x_test_scaled
+
+
+def apply_pca(x_train, x_val, x_test, n_components=0.95):
+    # n_components=0.95 keeps 95% of the variance
+    pca = PCA(n_components=n_components)
+    x_train_pca = pca.fit_transform(x_train)
+    x_val_pca = pca.transform(x_val)
+    x_test_pca = pca.transform(x_test)
+    return x_train_pca, x_val_pca, x_test_pca
 
 if __name__ == "__main__":
     # Data path - Adjust this to your local directory
@@ -84,5 +108,14 @@ if __name__ == "__main__":
     # Split data
     x_train, x_val, x_test, y_train, y_val, y_test = split_data(data)
 
+    # 2. Encoding
+    x_train_e, x_val_e, x_test_e = encode_features(x_train, x_val, x_test, y_train)
+
+    # 3. Scaling (Standardization)
+    x_train_s, x_val_s, x_test_s = scale_features(x_train_e, x_val_e, x_test_e)
+
+    # 4. PCA (Dimensionality Reduction)
+    x_train_final, x_val_final, x_test_final = apply_pca(x_train_s, x_val_s, x_test_s)
+    
     print("\nData preparation finalized.")
     print(f"Training set: {x_train.shape[0]} samples | Test set: {x_test.shape[0]} samples")
