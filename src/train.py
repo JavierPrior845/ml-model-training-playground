@@ -3,6 +3,8 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder, TargetEncoder, StandardScaler
 from sklearn.decomposition import PCA
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 
 def load_and_preprocess(path):
     # 1. Data loading
@@ -98,24 +100,43 @@ def apply_pca(x_train, x_val, x_test, n_components=0.95):
     x_test_pca = pca.transform(x_test)
     return x_train_pca, x_val_pca, x_test_pca
 
-if __name__ == "__main__":
-    # Data path - Adjust this to your local directory
-    DATA_PATH = 'data/WA_Fn-UseC_-Telco-Customer-Churn.csv'
 
-    # Run preprocessing pipeline
+def train_and_evaluate(x_train, y_train, x_val, y_val):
+    # 1. Initialize the model
+    # We use random_state for reproducibility
+    model = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=42)
+
+    # 2. Train (Fit) the model
+    print("Training the Random Forest model...")
+    model.fit(x_train, y_train)
+
+    # 3. Predict on Validation set
+    y_pred_val = model.predict(x_val)
+
+    # 4. Evaluation Metrics
+    print("\n--- Validation Performance ---")
+    print(f"Accuracy Score: {accuracy_score(y_val, y_pred_val):.4f}")
+    print("\nClassification Report:")
+    print(classification_report(y_val, y_pred_val))
+
+
+if __name__ == "__main__":
+    DATA_PATH = '../data/WA_Fn-UseC_-Telco-Customer-Churn.csv'
+
     data = load_and_preprocess(DATA_PATH)
 
-    # Split data
     x_train, x_val, x_test, y_train, y_val, y_test = split_data(data)
 
-    # 2. Encoding
     x_train_e, x_val_e, x_test_e = encode_features(x_train, x_val, x_test, y_train)
 
-    # 3. Scaling (Standardization)
     x_train_s, x_val_s, x_test_s = scale_features(x_train_e, x_val_e, x_test_e)
 
-    # 4. PCA (Dimensionality Reduction)
     x_train_final, x_val_final, x_test_final = apply_pca(x_train_s, x_val_s, x_test_s)
-    
-    print("\nData preparation finalized.")
-    print(f"Training set: {x_train.shape[0]} samples | Test set: {x_test.shape[0]} samples")
+
+    y_train_num = y_train.map({'Yes': 1, 'No': 0}) if y_train.dtype == 'O' else y_train
+    y_val_num = y_val.map({'Yes': 1, 'No': 0}) if y_val.dtype == 'O' else y_val
+
+    churn_model = train_and_evaluate(x_train_final, y_train_num, x_val_final, y_val_num)
+
+    #print("\nData preparation finalized.")
+    #print(f"Training set: {x_train.shape[0]} samples | Test set: {x_test.shape[0]} samples")
